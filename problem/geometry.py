@@ -267,6 +267,7 @@ class GeometryScene(Scene):
             )
             self.wait(1)
             self.clear()
+            init_obj()
             init_geometry()
             
         def present_problem():
