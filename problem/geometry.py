@@ -153,7 +153,7 @@ def dehighlight_angle(vertex, line1, line2, run_time=DEFAULT_RUN_TIME):
         return anim
     return Wait(run_time)
 
-# ===================== 主场景类 (仅优化了等待时间) =====================
+# ===================== 主场景类 =====================
 class GeometryScene(Scene):
     def construct(self):
         def init_obj():
@@ -171,13 +171,26 @@ class GeometryScene(Scene):
             self.CA = create_line(self.C, self.A)
             self.AP = create_line(self.A, self.P)
             self.PB = create_line(self.P, self.B)
-            self.PC = create_line(self.P,self. C)
+            self.PC = create_line(self.P, self.C)
             self.PQ = create_fline(self.P, self.Q)
             self.AQ = create_fline(self.A, self.Q)
             self.CQ = create_fline(self.C, self.Q)
             self.DP = create_fline(self.D, self.P)
             self.DB = create_fline(self.D, self.B)
             self.DA = create_fline(self.D, self.A)
+            
+            # 角度扇形（先创建，再创建标签）
+            self.sec1 = handle_angle(self.C, self.BC, self.PC, return_anim=False)
+            self.sec2 = handle_angle(self.C, self.CA, self.PC, YELLOW, return_anim=False)
+            
+            self.PCB = handle_angle(
+                    self.C, self.PC, self.BC, color=RED, opacity=0.5, 
+                    arc_radius=ANGLE_RADIUS, use_small_angle=True, 
+                    run_time=DEFAULT_RUN_TIME, return_anim=False
+                )
+            
+            self.APC = handle_angle(self.P, self.AP, self.PC, YELLOW, return_anim=False)
+            self.QPC = handle_angle(self.P, self.PQ, self.PC, return_anim=False)
             
             # 标签
             self.lA = create_label(self.A, UP + RIGHT, "A")
@@ -192,20 +205,8 @@ class GeometryScene(Scene):
             self.lsec2 = create_label(self.sec2, UP, "2")
             self.lsec1 = create_label(self.sec1, LEFT, "1")
             
-            self.sec1 = handle_angle(self.C, self.BC, self.PC, return_anim=False)
-            self.sec2 = handle_angle(self.C, self.CA, self.PC, YELLOW, return_anim=False)
-            
             # 信息文本
             self.info_text = create_tex("")
-            
-            self.PCB = handle_angle(
-                    self.C, self.PC, self.BC, color=RED, opacity=0.5, 
-                    arc_radius=ANGLE_RADIUS, use_small_angle=True, 
-                    run_time=DEFAULT_RUN_TIME, return_anim=False
-                )
-            
-            self.APC = handle_angle(self.P, self.AP, self.PC, YELLOW, return_anim=False)
-            self.QPC = handle_angle(self.P, self.PQ, self.PC, return_anim=False)
             
             self.ax = Axes([-6, 6, 1], [-6, 6, 1], 7, 7, tips=False)
             
@@ -409,7 +410,7 @@ class GeometryScene(Scene):
                 Wait(1.5),
                 
                 update_info(r"$\therefore \angle APQ = \angle 2 - \angle 1$"),
-                self.wait(1.5),
+                Wait(1.5),
                 
                 handle_angle(self.C, self.CA, self.BC, ORANGE),
                 update_info(r"$\because \angle ACB\,=\,90^\circ$"),
@@ -455,7 +456,7 @@ class GeometryScene(Scene):
                 dehighlight_line(self.AP),
                 Create(self.trAPQ),
                 update_info(r"$\therefore \triangle APQ$ 是等边三角形"),
-                wait(1.5),
+                Wait(1.5),
                 
                 FadeOut(self.trAPQ),
                 Wait(0.5),
@@ -463,7 +464,7 @@ class GeometryScene(Scene):
                 handle_angle(self.P, self.AP, self.PQ, GREEN), 
                 update_info(r"$\therefore \angle APQ\,=\,60^\circ$"),
                 Wait(1.5),
-                self.play(update_info(r"$\therefore \angle 2 - \angle 1\,=\,60^\circ$")),
+                update_info(r"$\therefore \angle 2 - \angle 1\,=\,60^\circ$"),
                 Wait(1.5)
             )
             
@@ -482,24 +483,162 @@ class GeometryScene(Scene):
             self.wait(2)
         
         def solution2():
+            # 方法二：补全正方形 + 全等三角形
             reset_scene("方法二")
-            self.play(
-                    Create(self.sec1), 
-                    Create(self.lsec1),
-                    Create(self.sec2), 
-                    Create(self.lsec2),
-                    Wait(0.5),
-                    Create(self.D), 
-                    Write(self.lD), 
-                    Create(self.DB),
-                    Create(self.DA),
-                    update_info(r"将 $\triangle ACB$ 补全为正方形"),
-                    Wait(0.5),
-                    Create(self.DP), 
-                    update_info(r"连接 $DP$")
-                )
-            self.wait(2)
             
+            # 三角形DBP填充（方法二专用）
+            trDBP = Polygon(
+                self.D.get_center(),
+                self.B.get_center(),
+                self.P.get_center(),
+                color=GREEN,
+                fill_opacity=0.3,
+                stroke_width=2
+            )
+            # 三角形ADP填充（方法二专用）
+            trADP = Polygon(
+                self.A.get_center(),
+                self.D.get_center(),
+                self.P.get_center(),
+                color=BLUE,
+                fill_opacity=0.3,
+                stroke_width=2
+            )
+            
+            # 标注∠1 ∠2，补全正方形
+            self.play(
+                Create(self.sec1),
+                Create(self.lsec1),
+                Wait(1),
+                
+                Create(self.sec2),
+                Create(self.lsec2),
+                Wait(1),
+                
+                Create(self.D),
+                Write(self.lD),
+                Create(self.DB),
+                Create(self.DA),
+                update_info(r"作 $DA \equalparallel BC,\ DB \equalparallel AC$"),
+                Wait(1.5),
+                
+                Create(self.DP),
+                update_info(r"连接 $DP$"),
+                Wait(1),
+                
+                handle_angle(self.A, self.DA, self.CA, ORANGE),
+                update_info(r"$\therefore \angle DAC = 180^\circ - \angle ACB = 90^\circ$"),
+                Wait(1.5),
+                
+                dehighlight_angle(self.A, self.DA, self.CA),
+                update_info(r"$\because \angle ACB = 90^\circ$"),
+                Wait(1),
+                
+                update_info(r"$\therefore \angle 1 = 90^\circ - \angle 2$"),
+                Wait(1.5),
+                
+                highlight_line(self.AP),
+                highlight_line(self.CA),
+                update_info(r"$\because AP = AC$"),
+                Wait(1),
+                
+                dehighlight_line(self.AP),
+                dehighlight_line(self.CA),
+                Create(self.trAPC),
+                update_info(r"$\therefore \triangle APC$ 为等腰三角形"),
+                Wait(1.5),
+                
+                FadeOut(self.trAPC),
+                handle_angle(self.A, self.AP, self.CA, YELLOW),
+                update_info(r"$\therefore \angle PAC = 180^\circ - 2\angle 2 = 2\angle 1$"),
+                Wait(2),
+                
+                dehighlight_angle(self.A, self.AP, self.CA)
+            )
+            
+            # 全等三角形证明
+            self.play(
+                highlight_line(self.DB),
+                highlight_line(self.CA),
+                update_info(r"在 $\triangle DBP$ 和 $\triangle ACP$ 中"),
+                Wait(1),
+                
+                update_info(r"$DB = AC$"),
+                Wait(1),
+                
+                dehighlight_line(self.DB),
+                dehighlight_line(self.CA),
+                
+                handle_angle(self.B, self.DB, self.PB, GREEN),
+                update_info(r"$\angle DBP = \angle ACP$"),
+                Wait(1.5),
+                
+                dehighlight_angle(self.B, self.DB, self.PB),
+                
+                highlight_line(self.PB),
+                highlight_line(self.PC),
+                update_info(r"$BP = PC$"),
+                Wait(1),
+                
+                dehighlight_line(self.PB),
+                dehighlight_line(self.PC),
+                
+                Create(trDBP),
+                Create(self.trAPC),
+                update_info(r"$\therefore \triangle DBP \cong \triangle ACP\ (SAS)$"),
+                Wait(2),
+                
+                FadeOut(trDBP),
+                FadeOut(self.trAPC),
+                
+                highlight_line(self.DP),
+                highlight_line(self.AP),
+                update_info(r"$\therefore DP = AP$"),
+                Wait(1),
+                
+                dehighlight_line(self.DP),
+                dehighlight_line(self.AP),
+                
+                highlight_line(self.DA),
+                highlight_line(self.BC),
+                highlight_line(self.CA),
+                highlight_line(self.AP),
+                update_info(r"又 $\because DA = BC = AC = AP$"),
+                Wait(1.5),
+                
+                dehighlight_line(self.DA),
+                dehighlight_line(self.BC),
+                dehighlight_line(self.CA),
+                dehighlight_line(self.AP),
+                
+                Create(trADP),
+                update_info(r"$\therefore \triangle ADP$ 为等边三角形"),
+                Wait(1.5),
+                
+                FadeOut(trADP),
+                
+                handle_angle(self.A, self.AP, self.DA, GREEN),
+                update_info(r"$\therefore \angle PAD = 60^\circ$"),
+                Wait(1.5),
+                
+                dehighlight_angle(self.A, self.AP, self.DA),
+                handle_angle(self.A, self.DA, self.CA, ORANGE),
+                update_info(r"又 $\because \angle PAD + \angle PAC = \angle DAC = 90^\circ$"),
+                Wait(2),
+                
+                dehighlight_angle(self.A, self.DA, self.CA),
+                update_info(r"$\therefore 60^\circ + 2\angle 1 = 90^\circ$"),
+                Wait(1.5),
+                
+                update_info(r"解得 $\angle 1 = 15^\circ$"),
+                Wait(1.5),
+                
+                Create(self.PCB),
+                Write(self.lPCB),
+                update_info(r"即 $\angle BCP = 15^\circ$")
+            )
+            self.wait(2)
+        
         def solution3():
             reset_scene("方法三")
             
@@ -538,14 +677,18 @@ class GeometryScene(Scene):
                 Create(create_label(self.BC, DOWN, "$k$", use_tex=True)),
                 Wait(1.5),
                 
-                update_info("则 $\\begin{cases}\nA\\,(0,\,k) \\\\\nB\\,(-k,\,0) \\\\\nC\\,(0,\,0) \n\\end{cases}$"),
-                Transform(self.lA, create_label(self.A, UP + RIGHT, "A\,$(0,\,k)$", use_tex=True)),
-                Transform(self.lB, create_label(self.B, LEFT + UP, "$B\,(-k,\,0)$", use_tex=True)),
-                Transform(self.lC, create_label(self.C, RIGHT + UP, "$C\,(0,\,0)$", use_tex=True)),
+                update_info(r"""则 $\begin{cases}
+A\,(0,\,k) \\
+B\,(-k,\,0) \\
+C\,(0,\,0)
+\end{cases}$"""),
+                Transform(self.lA, create_label(self.A, UP + RIGHT, r"A\,$(0,\,k)$", use_tex=True)),
+                Transform(self.lB, create_label(self.B, LEFT + UP, r"$B\,(-k,\,0)$", use_tex=True)),
+                Transform(self.lC, create_label(self.C, RIGHT + UP, r"$C\,(0,\,0)$", use_tex=True)),
                 Wait(1.5),
                 
                 update_info(r"设 $P\,(x,\,y)$"),
-                Transform(self.lP, create_label(self.P, UP, "P\,$(x,\,y)$", use_tex=True)),
+                Transform(self.lP, create_label(self.P, UP, r"P\,$(x,\,y)$", use_tex=True)),
                 highlight_line(self.PB),
                 highlight_line(self.PC),
                 update_info(r"$\because BP=PC$"),
@@ -588,11 +731,93 @@ class GeometryScene(Scene):
                 update_info(r"$\therefore \angle PCB=15^\circ$")
             )
             self.wait(2)
+        
+        def show_all_solutions():
+            """结尾依次展示三个方法的完整版"""
+            self.wait(1)
+            self.play(update_info(""))
+            self.clear()
+            
+            # 标题
+            title = Text("三种方法完整版", font_size=40)
+            self.play(Write(title))
+            self.wait(1.5)
+            self.play(FadeOut(title))
+            
+            # 方法一完整版
+            summary1 = Tex(r"""
+            $\begin{aligned}
+            &\textbf{方法一：辅助线 } PQ \\
+            &\text{作 } PQ \equalparallel BC,\ \text{连接 } AQ, CQ \\
+            &\because PQ \parallel BC \therefore \angle QPC = \angle 1 \\
+            &\because AP = AC \therefore \triangle APC \text{ 为等腰三角形} \\
+            &\therefore \angle APC = \angle 2,\ \angle APQ = \angle 2 - \angle 1 \\
+            &\because \angle ACB = 90^\circ \therefore \angle 1 + \angle 2 = 90^\circ \\
+            &\because PQ = BC = AC = AP \therefore AP = AQ \\
+            &\therefore \triangle APQ \text{ 是等边三角形} \therefore \angle APQ = 60^\circ \\
+            &\therefore \angle 2 - \angle 1 = 60^\circ \\
+            &\text{联立得 } \angle 1 = 15^\circ \\
+            &\therefore \angle BCP = 15^\circ
+            \end{aligned}$
+            """, font_size=22, tex_template=CtexTemplate())
+            self.play(Write(summary1))
+            self.wait(5)
+            self.play(FadeOut(summary1))
+            self.wait(0.5)
+            
+            # 方法二完整版
+            summary2 = Tex(r"""
+            $\begin{aligned}
+            &\textbf{方法二：补全正方形} \\
+            &\text{作 } DA \equalparallel BC,\ DB \equalparallel AC \\
+            &\therefore \angle DAC = 180^\circ - \angle ACB = 90^\circ \\
+            &\because \angle ACB = 90^\circ \therefore \angle 1 = 90^\circ - \angle 2 \\
+            &\because AP = AC \therefore \triangle APC \text{ 为等腰三角形} \\
+            &\therefore \angle PAC = 180^\circ - 2\angle 2 = 2\angle 1 \\
+            &\text{在 } \triangle DBP \text{ 和 } \triangle ACP \text{ 中：} \\
+            &\quad DB = AC,\ \angle DBP = \angle ACP,\ BP = PC \\
+            &\therefore \triangle DBP \cong \triangle ACP\ (SAS) \\
+            &\therefore DP = AP \\
+            &\text{又 } DA = BC = AC = AP \\
+            &\therefore \triangle ADP \text{ 为等边三角形} \therefore \angle PAD = 60^\circ \\
+            &\text{又 } \angle PAD + \angle PAC = \angle DAC = 90^\circ \\
+            &\therefore 60^\circ + 2\angle 1 = 90^\circ \therefore \angle 1 = 15^\circ \\
+            &\text{即 } \angle BCP = 15^\circ
+            \end{aligned}$
+            """, font_size=22, tex_template=CtexTemplate())
+            self.play(Write(summary2))
+            self.wait(5)
+            self.play(FadeOut(summary2))
+            self.wait(0.5)
+            
+            # 方法三完整版
+            summary3 = Tex(r"""
+            $\begin{aligned}
+            &\textbf{方法三：坐标法} \\
+            &\text{以 } C \text{ 为原点建立直角坐标系，设直角边长为 } k \\
+            &A(0, k),\ B(-k, 0),\ C(0, 0),\ \text{设 } P(x, y) \\
+            &\because BP = PC \\
+            &\therefore \sqrt{(-k-x)^2+y^2} = \sqrt{x^2+y^2} \Rightarrow x = -\frac{k}{2} \\
+            &\because AP = AC \\
+            &\therefore \sqrt{x^2+(k-y)^2} = k \Rightarrow y = \frac{2k - k\sqrt{3}}{2} \\
+            &\therefore \tan \angle PCB = \frac{y}{|x|} = 2 - \sqrt{3} \\
+            &\therefore \angle PCB = 15^\circ
+            \end{aligned}$
+            """, font_size=22, tex_template=CtexTemplate())
+            self.play(Write(summary3))
+            self.wait(5)
+            self.play(FadeOut(summary3))
+            self.wait(0.5)
+            
+            # 谢谢观看
+            thanks = Text("谢谢观看", font_size=60)
+            self.play(Write(thanks))
+            self.wait(3)
+            self.play(FadeOut(thanks))
+        
         # 3. 核心动画流程
         present_problem()
         solution1()
         solution2()
         solution3()
-
-if __name__ == "__main__":
-    os.system("cmd /K manim -p -qk geometry.py GeometryScene")
+        show_all_solutions()
