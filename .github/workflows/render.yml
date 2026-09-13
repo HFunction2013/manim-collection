@@ -18,7 +18,7 @@ on:
         default: ""
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.quality }}-${{ matrix.name }}
   cancel-in-progress: true
 
 permissions:
@@ -28,6 +28,7 @@ env:
   DISPLAY: :0 # 与官方 CI 一致，配合 Xvfb 供 OpenGL / moderngl 使用
   PYTHONIOENCODING: "utf8"
   QUALITY: ${{ inputs.quality || 'm' }}
+  MANIM_MEDIA_DIR: media
 
 jobs:
   render:
@@ -114,6 +115,21 @@ jobs:
           echo "=== 源码当前使用的字体 ==="
           grep -rhoE '\\set(CJK)?[a-zA-Z]*font\{[^}]*\}' --include='*.py' . | sort -u || true
 
+      # ========== Cache：每个场景独立缓存 partial + tex + mobject cache ==========
+      - name: Cache Manim scene assets
+        if: steps.gate.outputs.run == 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            media/cache
+            media/texts
+            media/videos/*/partial_movie_files
+          # key带上 matrix.name，三个场景缓存完全隔离互不覆盖！
+          key: ${{ github.workflow }}-manimcache-${{ github.ref }}-${{ env.QUALITY }}-${{ matrix.name }}-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ github.workflow }}-manimcache-${{ github.ref }}-${{ env.QUALITY }}-${{ matrix.name }}-
+      # ============================================================================
+
       - name: Install manim
         if: steps.gate.outputs.run == 'true'
         run: |
@@ -134,7 +150,7 @@ jobs:
         if: steps.gate.outputs.run == 'true'
         timeout-minutes: 30
         run: |
-          mkdir -p logs
+          mkdir -p logs artifacts
           set -o pipefail
           manim render \
             -q${{ env.QUALITY }} \
@@ -142,17 +158,30 @@ jobs:
             --media_dir media \
             "${{ matrix.file }}" "${{ matrix.scene }}" 2>&1 | tee "logs/${{ matrix.name }}.log"
 
+      # 提取最终成品mp4，partial_movie_files留在media目录，交给cache保存，不上传artifact
+      - name: Collect final mp4 only
+        if: steps.gate.outputs.run == 'true'
+        shell: bash
+        run: |
+          mp4=$(find media/videos -type f -name "${{ matrix.scene }}.mp4")
+          if [ -z "$mp4" ]; then
+            echo "::error::Did not find final mp4 for scene ${{ matrix.scene }}"
+            exit 1
+          fi
+          echo "Found output: $mp4"
+          cp "$mp4" "artifacts/${{ matrix.name }}.mp4"
+
       - name: Upload video artifact
         if: steps.gate.outputs.run == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: manim-${{ matrix.name }}-q${{ env.QUALITY }}
           path: |
-            media/videos/${{ matrix.name }}
+            artifacts/${{ matrix.name }}.mp4
             logs/${{ matrix.name }}.log
           if-no-files-found: error
           retention-days: 30
-          compression-level: 0 # 视频本身已压缩，直接存储可加快上传
+          compression-level: 0 # mp4已压缩，不重复压缩
 
       - name: Write job summary
         if: steps.gate.outputs.run == 'true' && always()
