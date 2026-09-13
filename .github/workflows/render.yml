@@ -1,0 +1,202 @@
+# 参照 ManimCommunity/manim 官方 .github/workflows/ci.yml 精简改写
+# 用途：在 GitHub Actions 的 Linux runner 上渲染 manim-collection 的场景，并把成片上传为 artifact
+# 字体策略：全部改用 Linux 开源字体（Noto CJK / Liberation Serif），不下载任何微软字体
+name: Render Manim Scenes
+
+on:
+  workflow_dispatch:
+    inputs:
+      quality:
+        description: "渲染质量：l=480p15 / m=720p30 / h=1080p60 / k=4K60"
+        required: false
+        default: "m"
+        type: choice
+        options: ["l", "m", "h", "k"]
+      scenes:
+        description: "只渲染指定场景（空格分隔，留空 = 全部场景）"
+        required: false
+        default: ""
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  DISPLAY: :0 # 与官方 CI 一致，配合 Xvfb 供 OpenGL / moderngl 使用
+  PYTHONIOENCODING: "utf8"
+  QUALITY: ${{ inputs.quality || 'm' }}
+
+jobs:
+  render:
+    name: Render ${{ matrix.scene }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: circumcircle_demo
+            file: circumcircle_demo.py
+            scene: TriangleCircumcircle
+          - name: copy_angle
+            file: copy_angle.py
+            scene: CopyAngle
+          - name: geometry
+            file: problem/geometry.py
+            scene: GeometryScene
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@v7
+
+      # 先决定要不要跑这一项：被跳过的场景不装依赖，几乎不耗时
+      - name: Resolve whether this scene should run
+        id: gate
+        shell: bash
+        run: |
+          sel="${{ inputs.scenes }}"
+          if [ -z "$sel" ] || echo " $sel " | grep -qw -- "${{ matrix.name }}"; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Python
+        if: steps.gate.outputs.run == 'true'
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        if: steps.gate.outputs.run == 'true'
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Install system dependencies (Linux)
+        if: steps.gate.outputs.run == 'true'
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          # ffmpeg 由 ubuntu-latest 镜像预装
+          # fonts-noto-cjk  : 中文（Noto Sans CJK SC），供 xeCJK 与 manim Text 使用
+          # fonts-liberation: Times New Roman 的度量兼容替代（Liberation Serif）
+          packages: python3-opengl libcairo2-dev libpango1.0-dev freeglut3-dev xvfb fonts-noto-cjk fonts-liberation fontconfig
+          version: 1.0
+
+      - name: Install Texlive (Linux)
+        if: steps.gate.outputs.run == 'true'
+        uses: zauguin/install-texlive@v4
+        with:
+          packages: >
+            scheme-basic latex fontspec tipa calligra xcolor
+            standalone preview doublestroke setspace rsfs relsize
+            ragged2e fundus-calligra microtype wasysym physics dvisvgm jknapltx
+            wasy cm-super babel-english gnu-freefont mathastext cbfonts-fd xetex
+            xecjk ctex
+
+      - name: Start virtual display (Linux)
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          sudo /usr/bin/Xvfb $DISPLAY -screen 0 1280x1024x24 &
+
+      - name: Verify fonts
+        if: steps.gate.outputs.run == 'true'
+        shell: bash
+        run: |
+          sudo fc-cache -f -s -v > /dev/null 2>&1 || true
+          echo "=== 字体解析结果 ==="
+          for f in "Noto Sans CJK SC" "Liberation Serif" "Noto Serif CJK SC"; do
+            printf '%-22s -> %s\n' "$f" "$(fc-match "$f")"
+          done
+          echo
+          echo "=== 源码当前使用的字体 ==="
+          grep -rhoE '\\set(CJK)?[a-zA-Z]*font\{[^}]*\}' --include='*.py' . | sort -u || true
+
+      - name: Install manim
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          uv venv .venv
+          echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
+          if [ -f requirements.txt ]; then
+            uv pip install --python .venv/bin/python -r requirements.txt
+          else
+            uv pip install --python .venv/bin/python manim
+          fi
+
+      - name: Show manim version
+        if: steps.gate.outputs.run == 'true'
+        run: manim --version
+
+      - name: Render ${{ matrix.scene }}
+        id: render
+        if: steps.gate.outputs.run == 'true'
+        timeout-minutes: 30
+        run: |
+          mkdir -p logs
+          set -o pipefail
+          manim render \
+            -q${{ env.QUALITY }} \
+            --progress_bar none \
+            --media_dir media \
+            "${{ matrix.file }}" "${{ matrix.scene }}" 2>&1 | tee "logs/${{ matrix.name }}.log"
+
+      - name: Upload video artifact
+        if: steps.gate.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: manim-${{ matrix.name }}-q${{ env.QUALITY }}
+          path: |
+            media/videos/${{ matrix.name }}
+            logs/${{ matrix.name }}.log
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0 # 视频本身已压缩，直接存储可加快上传
+
+      - name: Write job summary
+        if: steps.gate.outputs.run == 'true' && always()
+        run: |
+          {
+            echo "### 🎬 ${{ matrix.scene }}"
+            echo ""
+            echo "| 项目 | 值 |"
+            echo "| --- | --- |"
+            echo "| 源文件 | \`${{ matrix.file }}\` |"
+            echo "| 渲染质量 | \`-q${{ env.QUALITY }}\` |"
+            echo "| Artifact | \`manim-${{ matrix.name }}-q${{ env.QUALITY }}\` |"
+            echo "| 中文字体 | \`$(fc-match 'Noto Sans CJK SC' | cut -d: -f1)\` |"
+            if [ -f "logs/${{ matrix.name }}.log" ]; then
+              echo ""
+              echo "<details><summary>渲染日志（末尾 20 行）</summary>"
+              echo ""
+              echo '```text'
+              tail -n 20 "logs/${{ matrix.name }}.log"
+              echo '```'
+              echo "</details>"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  bundle:
+    name: Bundle all videos
+    needs: render
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download per-scene artifacts
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: manim-*
+          merge-multiple: true
+          path: videos
+
+      - name: Upload a single bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: manim-videos-all-q${{ env.QUALITY }}
+          path: videos
+          if-no-files-found: warn
+          retention-days: 30
+          compression-level: 0

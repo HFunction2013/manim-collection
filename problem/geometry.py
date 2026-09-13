@@ -26,9 +26,9 @@ class CtexTemplate(TexTemplate):
 \usepackage{amsmath}
 \usepackage{amssymb}
 \newcommand{\equalparallel}{{\,}^{\,/\!/}_{=\!\!=} {\,}}
-\setCJKmainfont{Microsoft YaHei}
-\setCJKsansfont{SimHei}
-\setmainfont{Times New Roman}
+\setCJKmainfont{Noto Sans CJK SC}
+\setCJKsansfont{Noto Sans CJK SC}
+\setmainfont{Liberation Serif}
 """
 
 # ===================== 通用工具函数 =====================
