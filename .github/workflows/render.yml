@@ -17,10 +17,6 @@ on:
         required: false
         default: ""
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.quality }}-${{ matrix.name }}
-  cancel-in-progress: true
-
 permissions:
   contents: read
 
@@ -35,6 +31,10 @@ jobs:
     name: Render ${{ matrix.scene }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    # ========= 移到job内部，这里可以正常访问 matrix.* =========
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-${{ env.QUALITY }}-${{ matrix.name }}
+      cancel-in-progress: true
     strategy:
       fail-fast: false
       matrix:
@@ -63,7 +63,6 @@ jobs:
           else
             echo "run=false" >> "$GITHUB_OUTPUT"
           fi
-
       - name: Setup Python
         if: steps.gate.outputs.run == 'true'
         uses: actions/setup-python@v7
@@ -96,12 +95,10 @@ jobs:
             ragged2e fundus-calligra microtype wasysym physics dvisvgm jknapltx
             wasy cm-super babel-english gnu-freefont mathastext cbfonts-fd xetex
             xecjk ctex
-
       - name: Start virtual display (Linux)
         if: steps.gate.outputs.run == 'true'
         run: |
           sudo /usr/bin/Xvfb $DISPLAY -screen 0 1280x1024x24 &
-
       - name: Verify fonts
         if: steps.gate.outputs.run == 'true'
         shell: bash
@@ -114,7 +111,6 @@ jobs:
           echo
           echo "=== 源码当前使用的字体 ==="
           grep -rhoE '\\set(CJK)?[a-zA-Z]*font\{[^}]*\}' --include='*.py' . | sort -u || true
-
       # ========== Cache：每个场景独立缓存 partial + tex + mobject cache ==========
       - name: Cache Manim scene assets
         if: steps.gate.outputs.run == 'true'
@@ -140,7 +136,6 @@ jobs:
           else
             uv pip install --python .venv/bin/python manim
           fi
-
       - name: Show manim version
         if: steps.gate.outputs.run == 'true'
         run: manim --version
@@ -157,7 +152,6 @@ jobs:
             --progress_bar none \
             --media_dir media \
             "${{ matrix.file }}" "${{ matrix.scene }}" 2>&1 | tee "logs/${{ matrix.name }}.log"
-
       # 提取最终成品mp4，partial_movie_files留在media目录，交给cache保存，不上传artifact
       - name: Collect final mp4 only
         if: steps.gate.outputs.run == 'true'
@@ -170,7 +164,6 @@ jobs:
           fi
           echo "Found output: $mp4"
           cp "$mp4" "artifacts/${{ matrix.name }}.mp4"
-
       - name: Upload video artifact
         if: steps.gate.outputs.run == 'true'
         uses: actions/upload-artifact@v4
@@ -212,6 +205,9 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-${{ env.QUALITY }}-bundle
+      cancel-in-progress: true
     steps:
       - name: Download per-scene artifacts
         uses: actions/download-artifact@v4
